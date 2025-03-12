@@ -1,0 +1,45 @@
+ARG RELEASE=latest
+FROM systemd:fedora-$RELEASE
+
+LABEL MAINTAINER Richard Lochner, Clone Research Corp. <lochner@clone1.com> \
+      org.label-schema.name = "nginx" \
+      org.label-schema.description = "nGinx with LetsEncrypt certbot." \
+      org.label-schema.vendor = "Clone Research Corp" \
+      org.label-schema.usage = "https://github.com/lochnerr/nginx" \
+      org.label-schema.vcs-url = "https://github.com/lochnerr/nginx.git"
+
+# Manditory packages:
+# nginx - the Nginx server.
+# certbot - the Let's Encrypt certificate renewal package.
+# python3-certbot-nginx - the Nginx plugin for certbot.
+
+# Copy the script files and other artifacts.
+COPY bin/. /usr/local/bin/
+
+RUN dnf -y install --nodocs \
+        nginx \
+        certbot \
+        python3-certbot-nginx \
+        && \
+    # The cleanup cleans at least 80 MB from images as of 2024-09.
+    dnf -y clean all && \
+    # Empty the yum cache.
+    rm -rf /var/cache/dnf && \
+    rm -rf /var/cache/yum && \
+    /usr/local/bin/nginx-install && \
+    rm /usr/local/bin/nginx-install && \
+    true
+
+# Use systemd init to bring up services.
+CMD [ "/sbin/init" ]
+
+# Set systemd stop signal.
+STOPSIGNAL SIGRTMIN+3
+
+# Set the build labels.
+# Do this last to allow build cacheing during development.
+ARG BUILD_DATE
+ARG VCS_REF
+LABEL org.label-schema.build-date = $BUILD_DATE \
+      org.label-schema.vcs-ref = $VCS_REF
+
