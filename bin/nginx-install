@@ -1,0 +1,71 @@
+#!/bin/sh
+
+# nginx-install: Install packages, if needed, and optionally, start nginx and certbot timer.
+
+set -e
+
+install_if_needed() {
+	# Compatible with Redhat & Debian derivatives.
+	local contingent="$2"
+	[ -z "$contingent" ] && contingent="$1"
+	pacman=
+	command -v $contingent >/dev/null 2>&1 && return
+	pacman="yum -y install"
+	command -v dnf     >/dev/null 2>&1 && pacman="dnf -y install"
+	command -v apt-get >/dev/null 2>&1 && pacman="apt-get -y install"
+	$pacman $1
+}
+
+# Install packages.
+install_if_needed nginx
+install_if_needed python3-certbot-nginx certbot
+
+# Enable nginx, if necessary.
+if ! systemctl is-enabled nginx >/dev/null 2>&1 ; then
+	echo "Info: Enabling nginx."
+	systemctl enable nginx
+else
+	echo "Info: The Nginx service is already enabled."
+fi
+
+# Enable certbot timer, if necessary.
+timer="certbot-renew.timer"
+command -v apt-get >/dev/null 2>&1 && timer="certbot.timer"
+if ! systemctl is-enabled ${timer} >/dev/null 2>&1 ; then
+	echo "Info: Enabling ${timer}."
+else
+	echo "Info: The ${timer} is already enabled."
+	systemctl enable ${timer}
+fi
+
+# Open ports if needed and the firewalld daemon is running.
+if command -v firewall-cmd >/dev/null 2>&1 ; then
+	if firewall-cmd --state >/dev/null 2>&1 ; then
+		if ! firewall-cmd --list-ports | grep "80/tcp" >/dev/null 2>&1 ; then
+			echo "Info: Opening http ports!"
+			firewall-cmd --permanent --add-port={80/tcp,443/tcp}
+			firewall-cmd --reload
+		else
+			echo "Info: The http ports are open!"
+		fi
+	fi
+fi
+
+# Add fixup for redhat distros.
+if [ -e /etc/sysconfig/certbot ]; then
+	if ! grep "RENEW_HOOK" /etc/sysconfig/certbot >/dev/null 2>&1 ; then
+		echo "Info: Adding fixup to eliminate useless log messages."
+		echo '# Prevent log messages reporting RENEW_HOOK evaluates to an empty string.' >>/etc/sysconfig/certbot
+		echo 'RENEW_HOOK=""' >>/etc/sysconfig/certbot
+	fi
+fi
+
+# Start the services, if requested.
+if [ "$(echo $1 | tr 'a-z' 'A-Z')" = "START" ]; then
+	echo "Info: Starting services."
+	systemctl start nginx
+	systemctl start ${timer}
+fi
+
+exit 0
+
