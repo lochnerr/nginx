@@ -1,0 +1,155 @@
+#!/bin/sh
+
+# add-site: Create new site configuration for use with the certbot nginx plugin on fedora or debian-like distros.
+
+# Following this basic procedure results in an overall A+ rating by SSL Labs.
+# https://www.ssllabs.com/ssltest/analyze.html?d=test.clone1.com
+# Note: Tested on an Amazon Linux 2023 instance (not a container) circa Feb 1, 2025.
+# Also tested successfully in a fedora 41 and Debian 12 containers.
+
+set -e
+
+generate_server_conf() {
+
+	domain="$1"
+	[ -n "${domain}" ] && site=" ${domain}"
+	
+	cfg="/etc/nginx/conf.d/${domain}.conf"
+	if command -v apt-get >/dev/null ; then
+		echo "Info: Adding site on a debian-like distro."
+		cfg="/etc/nginx/sites-available/${domain}"
+	else
+		echo "Info: Adding site on a redhat-like distro."
+	fi
+
+	if [ -e "${cfg}" ]; then
+		echo "Error: Config file '${cfg}' already exists!"
+		exit 1
+	fi
+
+	cat >${cfg} <<__EOD__
+server {
+    server_name ${domain};
+    root /var/www/${domain}/;
+    index index.html index.htm;
+    http2 on;
+}
+__EOD__
+
+	# http2 directive requires nginx version 1.25 or higher.
+	# nginx -v returns: 'nginx version: nginx/1.24.0 (Ubuntu)'
+	v="$(nginx -v 2>&1 | cut -d '/' -f 2)"
+	if [ $((10000 + $(echo $v | cut -d '.' -f 1) * 100 + $(echo $v | cut -d '.' -f 2))) -lt 10125 ]; then
+		echo "Info: Removing unsupported http2 directive."
+		sed -i '/http2/d' ${cfg}
+	fi
+
+	if command -v apt-get >/dev/null ; then
+		ln -s ${cfg} /etc/nginx/sites-enabled
+	fi
+
+	# Save the file to enable diff of changes by the plugin
+	cp -p ${cfg} /tmp/nginx.conf
+}
+
+generate_index_html() {
+
+	index_file="$1"
+	domain="$2"
+	[ -n "${domain}" ] && site=" ${domain}"
+
+	cat >${index_file} <<-__EOD__
+<!DOCTYPE html>
+<html>
+<head>
+<title>Under Construction</title>
+<link rel="shortcut icon" href="favicon.ico" />
+<style>
+body {
+width: 35em;
+margin: 0 auto;
+font-family: Tahoma, Verdana, Arial, sans-serif;
+}
+</style>
+</head>
+<body>
+<h1>This Site Under Construction</h1>
+<p><em>Thank you for visiting${site}!</em></p>
+</body>
+</html>
+	__EOD__
+}
+
+setup_domain() {
+
+	domain="$1"
+
+	# Create the domain root directory.
+	mkdir -p /var/www/${domain}/
+
+	if command -v getenforce >/dev/null ; then
+		# getenforce command returns Enforcing, Permissive, or Disabled.
+		if [[ "$(getenforce)" == "Enforcing" || "$(getenforce)" == "Permissive" ]]; then
+			echo "Setting Selinux context for /var/www/${domain}/."
+			# Set the SELinux httpd_sys_content_t context on the directory:
+			semanage fcontext -a -t httpd_sys_content_t "/var/www/${domain}(/.*)?"
+			# Note that you must install the policycoreutils-python-utils package to run the restorecon commands.
+			command -v restorecon >/dev/null && restorecon -Rv /var/www/${domain}/
+		fi
+	fi
+
+	# Create a domain log directory.
+#	mkdir -p /var/log/nginx/${domain}/
+
+	# Generate a simple index.html file.
+	generate_server_conf ${domain}
+
+	# Generate a simple index.html file.
+	generate_index_html /var/www/${domain}/index.html  ${domain}
+}
+
+if [ "$(id -u)" != "0" ]; then
+	echo "Must be root!"
+	exit 1
+fi
+
+if [ -z "$1" ]; then
+	echo "Format: $(basename $0) <domain name>"
+	exit 1
+fi
+
+if [ -d "/var/www/$1" ]; then
+	echo "Error: Directory /var/www/$1 already exists."
+	exit 1
+fi
+
+if [ -e /tmp/pebble.minica.pem ] 2>&1 ; then
+	# Running system unit tests, so set Let's Encrypt pebble test server.
+	LE_SERVER="--server https://localhost:14000/dir"
+fi
+
+if ! find /etc/letsencrypt/accounts 2>/dev/null | grep private_key.json >/dev/null 2>&1 ; then
+	echo "Error: There is no account registered."
+	echo 
+	echo "Have you registered an account with Let's Encrypt?"
+	echo 
+	echo "For example: certbot register --email user@example.com --agree-tos --no-eff-email ${LE_SERVER}"
+	exit 1
+fi
+
+# Set up domain(s).
+setup_domain $1
+
+echo "Info: Issuing certificate request."
+# Get a certificate from LetsEncrypt for the site.
+if certbot --redirect --hsts --nginx ${LE_SERVER} -d $1 ; then
+	echo "Info: Certificate request succeeded."
+	# Get a diff of the certbot changes.
+	diff /tmp/nginx.conf ${cfg} >/var/log/$1.diff || :
+else
+	echo "Error: Certificate request failed."
+	exit 1
+fi
+
+exit 0
+

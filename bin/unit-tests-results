@@ -26,6 +26,8 @@ fi
 
 cat /results/log.txt
 
+echo "Info: Log end."
+
 rc="$(cat /results/rc.txt)"
 rc="${rc:-0}"
 echo "Exiting with a return code of ${rc}."

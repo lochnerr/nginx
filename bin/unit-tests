@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # nginx-unit-test: Test certificate renewal using the nginx plugin for certbot.
 
@@ -21,7 +21,7 @@ fi
 
 # Update the certs.
 echo "Info: Updating the ca certificates to include the test ca certificate."
-if command -v apt-get >/dev/null 2>&1 ; then
+if [ ! -e /etc/sysconfig/certbot ]; then
 	cp /tmp/pebble.minica.pem /usr/local/share/ca-certificates/pebble.minica.crt
 	update-ca-certificates
 else
@@ -77,27 +77,40 @@ else
 	echo "Info: Retrieved file is identical!"
 fi
 
-# Force renewal on next run.
-sed -i \
- -e 's/^CERTBOT_ARGS=.*/CERTBOT_ARGS=" --force-renewal"/' \
- /etc/sysconfig/certbot
+if [ -e /etc/sysconfig/certbot ]; then
+	# Force renewal on next run.
+	sed -i \
+	 -e 's/^CERTBOT_ARGS=.*/CERTBOT_ARGS=" --force-renewal"/' \
+	 /etc/sysconfig/certbot
 
-# Kick-off the renewal now, rather than waiting on the timer.
-systemctl start certbot-renew.service
+	# Kick-off the renewal now, rather than waiting on the timer.
+	systemctl start certbot-renew.service
 
-# Wait up to five minutes for the certificate renewal.
+	# Turn-off forced renewal.
+	sed -i \
+	 -e 's/^CERTBOT_ARGS=.*/CERTBOT_ARGS=""/' \
+	 /etc/sysconfig/certbot
+else
+	# Do this manually on debian-like disros
+	/usr/bin/certbot -q renew --no-random-sleep-on-renew --force-renewal
+fi
+
+echo "Info: Waitiing for certificate."
+# Wait up to a minute for the certificate renewal.
+rc="1"
 for try in {1..20} ; do
 	if [ -e /etc/letsencrypt/archive/www.example.com/fullchain2.pem ]; then
-		echo "Info: New certificate is ready."
+		rc="0"
 		break
 	fi
-	sleep 15
+	sleep 3
 done
-
-# Turn-off forced renewal.
-sed -i \
- -e 's/^CERTBOT_ARGS=.*/CERTBOT_ARGS=""/' \
- /etc/sysconfig/certbot
+if [ "${rc}" = "0" ]; then
+	echo "Info: New certificate is ready."
+else
+	echo "Error: New certificate is not available."
+	return 6
+fi
 
 echo "Info: Begin Certificate List"
 openssl s_client -showcerts -servername www.example.com -connect www.example.com:443 </dev/null || :
