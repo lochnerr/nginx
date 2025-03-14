@@ -1,0 +1,115 @@
+#!/bin/sh
+
+# nginx-unit-test: Test certificate renewal using the nginx plugin for certbot.
+
+set -e
+
+run_tests() {
+
+# Tell challtestsrv to send queries for www.example.com to here.
+if ! curl --fail -X POST -d '{"host":"www.example.com", "addresses":["10.30.50.4"]}' http://10.30.50.3:8055/add-a ; then
+	echo "Error: Unable to set www.example.com IP address."
+	return 1
+fi
+
+# Get the letsencrypt test ca certificate from github.
+# See: https://github.com/letsencrypt/pebble?tab=readme-ov-file#avoiding-client-https-errors
+if ! curl --fail -o /tmp/pebble.minica.pem https://raw.githubusercontent.com/letsencrypt/pebble/main/test/certs/pebble.minica.pem ; then
+	echo "Error: Unable to retrieve the pebble test certificate."
+	return 2
+fi
+
+# Update the certs.
+echo "Info: Updating the ca certificates to include the test ca certificate."
+if command -v apt-get >/dev/null 2>&1 ; then
+	cp /tmp/pebble.minica.pem /usr/local/share/ca-certificates/pebble.minica.crt
+	update-ca-certificates
+else
+	cp /tmp/pebble.minica.pem /etc/pki/ca-trust/source/anchors/
+	update-ca-trust
+fi
+
+# Letsencrypt pebble is configured with a certificate with a CN of localhost.  It must be contacted
+# via localhost, so hack the /etc/hosts file to point to it. 
+
+echo "# Dummy localhost entry to allow SSL to pebble." >/tmp/hosts
+echo "10.30.50.2 localhost" >>/tmp/hosts
+cat  /etc/hosts             >>/tmp/hosts
+
+# Delete the normal localhost entries.
+sed -i \
+ -e '/^127.0.0.1/d' \
+ -e '/^::1/d' \
+ /tmp/hosts
+
+echo "Info: Begin /etc/hosts file"
+cat /tmp/hosts
+echo "Info: End /etc/hosts file"
+
+cat /tmp/hosts >/etc/hosts
+
+# Register with the test server.
+if certbot register -m admin@example.com  --agree-tos --no-eff-email --server https://localhost:14000/dir ; then
+	echo "Info: Account registration succeeded!"
+else
+	echo "Error: Registration failed!"
+	return 3
+fi
+
+# Add the test site (this will request a certificate)
+add-site www.example.com
+
+if [ -e /etc/letsencrypt/live/www.example.com/fullchain.pem ]; then
+	echo "Info: Certificate is live!"
+fi
+
+# Retrieve index.html from the site.
+if ! curl --fail --cacert /etc/letsencrypt/live/www.example.com/fullchain.pem https://www.example.com/index.html -o /tmp/index.html >/dev/null 2>&1 ; then
+	echo "Error: Unable to access the new site."
+	return 4
+fi
+
+# Verify the file.
+if ! diff /var/www/www.example.com/index.html /tmp/index.html ; then
+	echo "Error: Retreived file is not identical!" 
+	return 5
+else
+	echo "Info: Retrieved file is identical!"
+fi
+
+# Force renewal on next run.
+sed -i \
+ -e 's/^CERTBOT_ARGS=.*/CERTBOT_ARGS=" --force-renewal"/' \
+ /etc/sysconfig/certbot
+
+# Kick-off the renewal now, rather than waiting on the timer.
+systemctl start certbot-renew.service
+
+# Wait up to five minutes for the certificate renewal.
+for try in {1..20} ; do
+	if [ -e /etc/letsencrypt/archive/www.example.com/fullchain2.pem ]; then
+		echo "Info: New certificate is ready."
+		break
+	fi
+	sleep 15
+done
+
+# Turn-off forced renewal.
+sed -i \
+ -e 's/^CERTBOT_ARGS=.*/CERTBOT_ARGS=""/' \
+ /etc/sysconfig/certbot
+
+echo "Info: Begin Certificate List"
+openssl s_client -showcerts -servername www.example.com -connect www.example.com:443 </dev/null || :
+echo "Info: End Certificate List"
+
+}
+
+[ ! -e /results/rc.txt ]  && mkfifo /results/rc.txt
+[ ! -e /results/log.txt ] && mkfifo /results/log.txt
+
+run_tests | tee /results/log.txt
+rc="${PIPESTATUS[0]}"
+
+echo $rc >/results/rc.txt
+

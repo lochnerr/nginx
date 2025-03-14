@@ -1,0 +1,34 @@
+#!/bin/sh
+
+# nginx-test-results: Get test results from nginx-unit-test.
+
+set -e
+
+wait_for_file() {
+
+	echo "Info: Waiting ${2:-10} seconds for file '$1'."
+
+	rc="1"
+	for try in {1..12} ; do
+		if [ -e "$1" ]; then
+			rc="0"
+			break
+		fi
+		sleep 1
+	done
+	return $rc
+}
+
+if ! wait_for_file /results/log.txt 30 ; then
+	echo "Error: Unable to access log file."
+	exit 1
+fi
+
+cat /results/log.txt
+
+rc="$(cat /results/rc.txt)"
+rc="${rc:-0}"
+echo "Exiting with a return code of ${rc}."
+
+exit ${rc}
+
