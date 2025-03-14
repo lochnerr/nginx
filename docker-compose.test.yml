@@ -1,6 +1,8 @@
 version: "3"
 
-# certbot container automated test compose file.
+# Nginx with certbot unit test compose file.
+
+# Example: TAG=fedora-41 podman-compose --podman-run-args='--systemd=always'  -f docker-compose.test.yml up
 
 services:
   pebble:
@@ -24,7 +26,7 @@ services:
       acmenet:
         ipv4_address: 10.30.50.3
   www:
-    image: nginx:${DOCKER_TAG:-fedora-41}
+    image: nginx:${TAG}
     command: /usr/local/bin/run-service unit-tests
     restart: "no"
     hostname: www.example.com
@@ -37,7 +39,7 @@ services:
       - pebble
       - challtestsrv
   sut:
-    image: nginx:${DOCKER_TAG:-fedora-41}
+    image: nginx:${TAG}
     command: /usr/local/bin/unit-tests-results
     restart: "no"
     hostname: sut.example.com
