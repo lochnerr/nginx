@@ -12,6 +12,7 @@ LABEL MAINTAINER Richard Lochner, Clone Research Corp. <lochner@clone1.com> \
 # nginx - the Nginx server.
 # certbot - the Let's Encrypt certificate renewal package.
 # python3-certbot-nginx - the Nginx plugin for certbot.
+# openssl - for inspecting the generated certifcates.
 
 # Copy the script files and other artifacts.
 COPY bin/. /usr/local/bin/
@@ -20,6 +21,7 @@ RUN dnf -y install --nodocs \
         nginx \
         certbot \
         python3-certbot-nginx \
+        openssl \
         && \
     # The cleanup cleans at least 80 MB from images as of 2024-09.
     dnf -y clean all && \

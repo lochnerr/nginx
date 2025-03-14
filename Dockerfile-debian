@@ -12,6 +12,8 @@ LABEL MAINTAINER Richard Lochner, Clone Research Corp. <lochner@clone1.com> \
 # nginx - the Nginx server.
 # certbot - the Let's Encrypt certificate renewal package.
 # python3-certbot-nginx - the Nginx plugin for certbot.
+# curl - for system unit testing.
+# openssl - for inspecting the generated certifcates.
 
 # Copy the script files and other artifacts.
 COPY bin/. /usr/local/bin/
@@ -21,6 +23,8 @@ RUN apt-get -y update \
         nginx \
         certbot \
         python3-certbot-nginx \
+        curl \
+        openssl \
         && \
     /usr/local/bin/nginx-install && \
     rm /usr/local/bin/nginx-install && \
