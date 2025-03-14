@@ -1,0 +1,62 @@
+version: "3"
+
+# certbot container automated test compose file.
+
+services:
+  pebble:
+    image: ghcr.io/letsencrypt/pebble:latest
+    #command: -config test/config/pebble-config.json -strict -dnsserver 10.30.50.3:8053
+    command: -config /pebble-config.json -strict -dnsserver 10.30.50.3:8053
+    volumes:
+      - ./pebble-config-unit-tests.json:/pebble-config.json:ro
+    ports:
+      - 14000:14000 # HTTPS ACME API
+      - 15000:15000 # HTTPS Management API
+    networks:
+      acmenet:
+        ipv4_address: 10.30.50.2
+  challtestsrv:
+    image: ghcr.io/letsencrypt/pebble-challtestsrv:latest
+    command: -defaultIPv6 "" -defaultIPv4 10.30.50.3
+    ports:
+      - 8055:8055 # HTTP Management API
+    networks:
+      acmenet:
+        ipv4_address: 10.30.50.3
+  www:
+    image: nginx:${DOCKER_TAG:-fedora-41}
+    command: /usr/local/bin/run-service unit-tests
+    restart: "no"
+    hostname: www.example.com
+    volumes:
+      - results:/results
+    networks:
+      acmenet:
+        ipv4_address: 10.30.50.4
+    depends_on:
+      - pebble
+      - challtestsrv
+  sut:
+    image: nginx:${DOCKER_TAG:-fedora-41}
+    command: /usr/local/bin/unit-tests-results
+    restart: "no"
+    hostname: sut.example.com
+    volumes:
+      - results:/results
+    networks:
+      acmenet:
+        ipv4_address: 10.30.50.5
+    depends_on:
+      - www
+
+volumes:
+  results:
+
+networks:
+  acmenet:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.30.50.0/24
+
