@@ -1,8 +1,4 @@
-version: "3"
-
-# Nginx with certbot unit test compose file.
-
-# Example: DISTRO=fedora RELEASE=41 podman-compose --podman-run-args='--systemd=always'  -f docker-compose.test.yml up
+# Automated test and build compose file for Nginx with certbot.
 
 services:
   pebble:
@@ -39,7 +35,12 @@ services:
       - pebble
       - challtestsrv
   sut:
-    image: nginx:${DISTRO:-fedora}-${Release:-latest}
+    build:
+      dockerfile: Dockerfile-${DISTRO:-fedora}
+      args:
+        DISTRO: ${DISTRO:-fedora}
+        RELEASE: ${RELEASE:-latest}
+    image: lochnerr/nginx:${DISTRO:-fedora}-${Release:-latest}
     command: /usr/local/bin/unit-tests-results
     restart: "no"
     hostname: sut.example.com

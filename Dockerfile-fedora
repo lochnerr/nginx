@@ -1,6 +1,5 @@
-ARG DISTRO=fedora
-ARG RELEASE=latest
-FROM systemd:$DISTRO-$RELEASE
+ARG RELEASE
+FROM systemd:fedora-$RELEASE
 
 LABEL MAINTAINER Richard Lochner, Clone Research Corp. <lochner@clone1.com> \
       org.label-schema.name = "nginx" \

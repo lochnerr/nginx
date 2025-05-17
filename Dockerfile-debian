@@ -1,4 +1,4 @@
-ARG RELEASE=latest
+ARG RELEASE
 FROM systemd:debian-$RELEASE
 
 LABEL MAINTAINER Richard Lochner, Clone Research Corp. <lochner@clone1.com> \
