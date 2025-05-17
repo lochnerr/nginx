@@ -1,5 +1,6 @@
+ARG DISTRO
 ARG RELEASE
-FROM systemd:debian-$RELEASE
+FROM systemd:$DISTRO-$RELEASE
 
 LABEL MAINTAINER Richard Lochner, Clone Research Corp. <lochner@clone1.com> \
       org.label-schema.name = "nginx" \

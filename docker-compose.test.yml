@@ -22,7 +22,7 @@ services:
       acmenet:
         ipv4_address: 10.30.50.3
   www:
-    image: nginx:${DISTRO:-fedora}-${Release:-latest}
+    image: lochnerr/nginx:${DISTRO:-fedora}-${RELEASE:-latest}
     command: /usr/local/bin/run-service unit-tests
     restart: "no"
     hostname: www.example.com
@@ -40,7 +40,7 @@ services:
       args:
         DISTRO: ${DISTRO:-fedora}
         RELEASE: ${RELEASE:-latest}
-    image: lochnerr/nginx:${DISTRO:-fedora}-${Release:-latest}
+    image: lochnerr/nginx:${DISTRO:-fedora}-${RELEASE:-latest}
     command: /usr/local/bin/unit-tests-results
     restart: "no"
     hostname: sut.example.com
